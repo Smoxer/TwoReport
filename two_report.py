@@ -10,7 +10,10 @@ import sys
 import os
 
 FIREFOX_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:83.0) Gecko/20100101 Firefox/83.0'
-SQLITE_COOKIES_LOCATIONS = ['/data/data/il.idf.doch1/app_webview/Default/Cookies', r'%localappdata%\Google\Chrome\User Data\Default\Cookies', '~/Library/Application Support/Google/Chrome/Default/Cookies']
+SQLITE_COOKIES_LOCATIONS = ['/data/data/il.idf.doch1/app_webview/Default/Cookies', # Android - root required
+                            r'%localappdata%\Google\Chrome\User Data\Default\Cookies', # Windows
+                            '~/Library/Application Support/Google/Chrome/Default/Cookies' # macOS
+                            ]
 
 
 class OneReport:
@@ -38,6 +41,17 @@ class OneReport:
         if self._debug:
             stdout_func(message)
 
+    def _decrypt_cookie(self, blob):
+        if os.name == 'nt':
+            try:
+                import win32crypt
+            except ImportError:
+                self._log("Can't import win32crypt, try to run pip install pywin32", warnings.warn)
+                return ''
+            return win32crypt.CryptUnprotectData(blob, None, None, None, 0)[1].decode('utf-8')
+        else:
+            self._log(f"Decrypt strategy wasn't found for {os.name}", warnings.warn)
+        return ''
 
     def _get_connection_cookies(self):
         '''
@@ -50,11 +64,15 @@ class OneReport:
                 self._log(f'Found matching SQLITE db at {sqlite}')
                 connection = sqlite3.connect(sqlite)
                 cursor = connection.cursor()
-                for row in cursor.execute("SELECT name,value FROM cookies WHERE host_key LIKE '%prat.idf.il%';"):
+                for row in cursor.execute("SELECT name, value, encrypted_value FROM cookies WHERE host_key LIKE '%prat.idf.il%';"):
                     key = row[0]
                     value = row[1]
+                    encrypted_value = row[2]
                     if value == '':
-                        self._log(f'Cookie {key} is empty', warnings.warn)
+                        if encrypted_value != '':
+                            value = self._decrypt_cookie(encrypted_value)
+                        else:
+                            self._log(f'Cookie {key} is empty', warnings.warn)
                     result[key] = value
         return result
 
@@ -81,9 +99,9 @@ class OneReport:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--history', action='store_true', help='Show report history')
+    parser = argparse.ArgumentParser(description='Automatic doch1. In order for this script to work, you need to login via chrome/doch1 app (only works for rooted android phones) and choose the "Remember me" option')
     parser.add_argument('-d', '--debug', action='store_true', help='Print debug messages')
+    parser.add_argument('--history', action='store_true', help='Show report history')
     return parser.parse_args()
 
 

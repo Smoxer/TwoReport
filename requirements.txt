@@ -1,1 +1,2 @@
-requests
+requests; python_version >= "3.7"
+pywin32; python_version >= "3.7" and sys_platform == 'win32'
