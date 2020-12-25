@@ -1,2 +1,3 @@
 requests; python_version >= "3.7"
 pywin32; python_version >= "3.7" and sys_platform == 'win32'
+PyYaml; python_version >= "3.7"
