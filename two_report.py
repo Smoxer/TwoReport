@@ -141,7 +141,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Automatic doch1. In order for this script to work, you need to login via chrome/doch1 app (only works for rooted android phones) and choose the "Remember me" option')
     parser.add_argument('-d', '--debug', action='store_true', help='Print debug messages')
     parser.add_argument('--history', action='store_true', help='Show report history')
-    parser.add_argument('--cookies', action='store', help='Override cookies scan and provied yaml format cookies file')
+    parser.add_argument('-c', '--cookies', action='store', help='Override cookies scan and provied yaml format cookies file')
     parser.add_argument('-a', '--auto', action='store', help='Auto fill report from file')
     return parser.parse_args()
 
