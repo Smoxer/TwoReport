@@ -15,19 +15,19 @@ $ pip install -m requirements.txt
 
 ### Running
 ```
-usage: two_report.py [-h] [-d] [--history] [--cookies COOKIES] [-a AUTO]
+usage: two_report.py [-h] [-d] [--history] [-c COOKIES] [-a AUTO] [-l]
 
-Automatic doch1. In order for this script to work, you need to login via
-chrome/doch1 app (only works for rooted android phones) and choose the "Remember
-me" option
+Automatic doch1. In order for this script to work, you need to login via chrome/doch1 app (only works for rooted
+android phones) and choose the "Remember me" option
 
 optional arguments:
   -h, --help            show this help message and exit
   -d, --debug           Print debug messages
   --history             Show report history
-  -c, --cookies COOKIES     Override cookies scan and provied yaml format cookies
-                        file
+  -c COOKIES, --cookies COOKIES
+                        Override cookies scan and provied yaml format cookies file
   -a AUTO, --auto AUTO  Auto fill report from file
+  -l, --report_list     Show report options list
 ```
 
 ### Cookies
@@ -44,13 +44,22 @@ In order to get cookies for the site, you can read [this](https://www.cookieyes.
 
 ### Auto fill
 You can run the program with "--auto" flag and the program will get from this [yaml](https://en.wikipedia.org/wiki/YAML) file the correct date, and fill the status according to that file.
+You can get the main and secondary codes by running `two_report.py -l`
 The syntax is:
 ```yaml
-<day>.<month>: "<status>"
+<day>.<month>: 
+  report_self:
+    main_code: <MainCode>
+	secondary_code: <SecondaryCode>
+	note: <FreeText - optional>
 ```
 For example:
 ```yaml
-27.12: "here"
+27.12: 
+  report_self:
+    main_code: 02
+    secondary_code: 05
+    note: 'בקורס מקוון'
 ```
 
 ### License

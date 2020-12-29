@@ -20,13 +20,15 @@ SQLITE_COOKIES_LOCATIONS = ['/data/data/il.idf.doch1/app_webview/Default/Cookies
 class OneReport:
     ONE_REPORT_URL = 'https://one.prat.idf.il/'
     ENSURE_LOGIN_URI = 'api/Attendance/GetReportedData'
-    REPORT_TODAY_URI = ''
+    ALLOWED_STATUS_URI = 'api/Attendance/GetAllFilterStatuses'
+    REPORT_TODAY_URI = 'api/Attendance/InsertPersonalReport'
     HISTORY_URI = 'api/Attendance/memberHistory'
     FINISH_URI = 'finish'
     HEADERS = {'User-Agent': FIREFOX_UA, 'Accept': 'application/json, text/plain, */*', 'Host': urlparse(ONE_REPORT_URL).netloc}
 
     def __init__(self, debug=False, cookies_file=None):
         self.user_data = {}
+        self._allowed_status = {}
 
         self._debug = debug
         self._session = requests.Session()
@@ -35,9 +37,9 @@ class OneReport:
         self._keepalive()
 
     def _keepalive(self):
-        '''
+        """
         Sending keepalive to the server in order to extend our session
-        '''
+        """
         self._log('Sending keepalive')
         self._session.get(self.ONE_REPORT_URL + self.FINISH_URI)
 
@@ -58,9 +60,9 @@ class OneReport:
         return ''
 
     def _get_connection_cookies(self):
-        '''
+        """
         Get connection session from il.idf.doch1 app 
-        '''
+        """
         result = {}
         for sqlite in SQLITE_COOKIES_LOCATIONS:
             sqlite = os.path.expandvars(sqlite)
@@ -68,7 +70,8 @@ class OneReport:
                 self._log(f'Found matching SQLITE db at {sqlite}')
                 connection = sqlite3.connect(sqlite)
                 cursor = connection.cursor()
-                for row in cursor.execute("SELECT name, value, encrypted_value FROM cookies WHERE host_key LIKE '%prat.idf.il%';"):
+                sql_query = "SELECT name, value, encrypted_value FROM cookies WHERE host_key LIKE '%prat.idf.il%';"
+                for row in cursor.execute(sql_query):
                     key = row[0]
                     value = row[1]
                     encrypted_value = row[2]
@@ -99,26 +102,46 @@ class OneReport:
     def _ensure_login(self):
         if self.user_data == {}:
             self._log(f'You must logged in!', warnings.warn)
+            sys.exit(1)
+
+    def _update_status(self):
+        status_request = self._session.get(self.ONE_REPORT_URL + self.ALLOWED_STATUS_URI)
+        if status_request.status_code == 200:
+            self._allowed_status = status_request.json()
+        else:
+            self._log(f"Can't login, got status code {status_request.status_code}", warnings.warning)
 
     def login(self):
-        '''
+        """
         Ensure we are logged in and get our name as a test
-        '''
+        """
         ensure_login_request = self._session.get(self.ONE_REPORT_URL + self.ENSURE_LOGIN_URI)
         if ensure_login_request.status_code == 200:
             self.user_data = ensure_login_request.json()
             print(f"Logged in as {self.user_data['firstName']} {self.user_data['lastName']}")
+            self._update_status()
         else:
-            self._log(f"Can't login, got status code {ensure_login_request.status_code}")
+            self._log(f"Can't login, got status code {ensure_login_request.status_code}", warnings.warning)
 
     def print_history(self):
-        '''
+        """
         See reports history
-        '''
+        """
         now = datetime.datetime.now()
         history = self._session.post(self.ONE_REPORT_URL + self.HISTORY_URI, json={'month': now.month, 'year': now.year}).json() 
         for day in history['days']:
             print(f"{day['date']}\t\t{day['mainStatusDeterminedName']} - {day['secondaryStatusDeterminedName']}")
+
+    def report_today(self, main_code, secondary_code, note=''):
+        self._ensure_login()
+        if self.user_data['cantReport']:
+            print(f"Can't report right now")
+        else:
+            payload = {'MainCode': (None, str(main_code)), 'SecondaryCode': (None, str(secondary_code)), 'Note': (None, str(note))}
+            report_request = self._session.post(self.ONE_REPORT_URL + self.REPORT_TODAY_URI, files=payload).json() 
+            self._update_status()
+            print(f"Reported {self.user_data['mainTextReported']} - {self.user_data['secondaryTextReported']} "
+                  f"on {self.user_data['firstName']} {self.user_data['lastName']}")
 
     def auto_report_from_file(self, report_file_path):
         self._ensure_login()
@@ -135,14 +158,31 @@ class OneReport:
             if current_day not in reports:
                 self._log(f"Can't find a report for {current_day}", warnings.warn)
             else:
+                report_self = reports[current_day]['report_self']
+                main_code = report_self['main_code']
+                secondary_code = report_self['secondary_code']
+                note = ''
+                if 'note' in report_self:
+                    note = report_self['note']
+                self.report_today(main_code, secondary_code, note)
                 print(f"Reporting {reports[current_day]} on today ({current_day})")
 
+    def print_report_list(self):
+        for primary in self._allowed_status['primaries']:
+            print(f"{primary['statusCode']} - {primary['statusDescription']}")
+            for secondary in primary['secondaries']:
+                print(f"\t{secondary['statusCode']} - {secondary['statusDescription']}")
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description='Automatic doch1. In order for this script to work, you need to login via chrome/doch1 app (only works for rooted android phones) and choose the "Remember me" option')
+    parser = argparse.ArgumentParser(description='Automatic doch1. In order for this script to work, you need to '
+                                                 'login via chrome/doch1 app (only works for rooted android phones) '
+                                                 'and choose the "Remember me" option')
     parser.add_argument('-d', '--debug', action='store_true', help='Print debug messages')
     parser.add_argument('--history', action='store_true', help='Show report history')
     parser.add_argument('-c', '--cookies', action='store', help='Override cookies scan and provied yaml format cookies file')
     parser.add_argument('-a', '--auto', action='store', help='Auto fill report from file')
+    parser.add_argument('-l', '--report_list', action='store_true', help='Show report options list')
     return parser.parse_args()
 
 
@@ -155,10 +195,13 @@ def main():
 
     if args.history:
         one_report.print_history()
+    elif args.report_list:
+        one_report.print_report_list()
     elif args.auto:
         one_report.auto_report_from_file(args.auto)
     else:
         print(f'Nothing to do')
+
 
 if __name__ == '__main__':
     main()
