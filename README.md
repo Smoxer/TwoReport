@@ -50,8 +50,8 @@ The syntax is:
 <day>.<month>: 
   report_self:
     main_code: <MainCode>
-	secondary_code: <SecondaryCode>
-	note: <FreeText - optional>
+    secondary_code: <SecondaryCode>
+    note: <FreeText - optional>
 ```
 For example:
 ```yaml
