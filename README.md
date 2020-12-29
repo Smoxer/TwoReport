@@ -22,7 +22,6 @@ android phones) and choose the "Remember me" option
 
 optional arguments:
   -h, --help            show this help message and exit
-  -d, --debug           Print debug messages
   --history             Show report history
   -c COOKIES, --cookies COOKIES
                         Override cookies scan and provied yaml format cookies file
