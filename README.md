@@ -15,7 +15,7 @@ $ pip install -m requirements.txt
 
 ### Running
 ```
-usage: two_report.py [-h] [-d] [--history] [-c COOKIES] [-a AUTO] [-l]
+usage: two_report.py [-h] [--history] [-c COOKIES] [-a AUTO] [-l] [-d] [-r RUN_HOUR]
 
 Automatic doch1. In order for this script to work, you need to login via chrome/doch1 app (only works for rooted
 android phones) and choose the "Remember me" option
@@ -27,6 +27,9 @@ optional arguments:
                         Override cookies scan and provied yaml format cookies file
   -a AUTO, --auto AUTO  Auto fill report from file
   -l, --report_list     Show report options list
+  -d, --daemonize       Run the program as daemon
+  -r RUN_HOUR, --run_hour RUN_HOUR
+                        Run the cron at the specific hour (24 hours format)
 ```
 
 ### Cookies
