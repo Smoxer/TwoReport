@@ -6,6 +6,9 @@ import argparse
 import requests
 import sqlite3
 import datetime
+import schedule
+import random
+import time
 import yaml
 import sys
 import os
@@ -23,35 +26,26 @@ class OneReport:
     ALLOWED_STATUS_URI = 'api/Attendance/GetAllFilterStatuses'
     REPORT_TODAY_URI = 'api/Attendance/InsertPersonalReport'
     HISTORY_URI = 'api/Attendance/memberHistory'
-    FINISH_URI = 'finish'
     HEADERS = {'User-Agent': FIREFOX_UA, 'Accept': 'application/json, text/plain, */*', 'Host': urlparse(ONE_REPORT_URL).netloc}
 
     def __init__(self, cookies_file=None):
         self.user_data = {}
+        self.logger = Logger('TwoReport')
         self._allowed_status = {}
-        self._logger = Logger('TwoReport')
         self._session = requests.Session()
         self._session.headers.update(OneReport.HEADERS)
         self._override_cookies(cookies_file)
-        self._keepalive()
-
-    def _keepalive(self):
-        """
-        Sending keepalive to the server in order to extend our session
-        """
-        self._logger.debug('Sending keepalive')
-        self._session.get(self.ONE_REPORT_URL + self.FINISH_URI)
 
     def _decrypt_cookie(self, blob):
         if os.name == 'nt':
             try:
                 import win32crypt
             except ImportError:
-                self._logger.warning("Can't import win32crypt, try to run pip install pywin32")
+                self.logger.warning("Can't import win32crypt, try to run pip install pywin32")
                 return ''
             return win32crypt.CryptUnprotectData(blob, None, None, None, 0)[1].decode('utf-8')
         else:
-            self._logger.warning(f"Decrypt strategy wasn't found for {os.name}")
+            self.logger.warning(f"Decrypt strategy wasn't found for {os.name}")
         return ''
 
     def _get_connection_cookies(self):
@@ -62,7 +56,7 @@ class OneReport:
         for sqlite in SQLITE_COOKIES_LOCATIONS:
             sqlite = os.path.expandvars(sqlite)
             if os.path.exists(sqlite):
-                self._logger.debug(f'Found matching SQLITE db at {sqlite}')
+                self.logger.debug(f'Found matching SQLITE db at {sqlite}')
                 connection = sqlite3.connect(sqlite)
                 cursor = connection.cursor()
                 sql_query = "SELECT name, value, encrypted_value FROM cookies WHERE host_key LIKE '%prat.idf.il%';"
@@ -74,16 +68,16 @@ class OneReport:
                         if encrypted_value != '':
                             value = self._decrypt_cookie(encrypted_value)
                         else:
-                            self._logger.warning(f'Cookie {key} is empty')
+                            self.logger.warning(f'Cookie {key} is empty')
                     result[key] = value
         return result
 
     def _get_cookies_from_file(self, cookies_file_path):
         if os.path.exists(cookies_file_path):
-            self._logger.debug(f'Getting cookies from {cookies_file_path}')
+            self.logger.debug(f'Getting cookies from {cookies_file_path}')
             with open(cookies_file_path, 'rb') as cookies_fd:
                 return yaml.safe_load(cookies_fd)
-        self._logger.warning(f'File {cookies_file_path} was not found!')
+        self.logger.warning(f'File {cookies_file_path} was not found!')
         return {}
 
     def _override_cookies(self, cookies_file):
@@ -92,11 +86,11 @@ class OneReport:
         else:
             cookies = self._get_cookies_from_file(cookies_file)
         self._session.cookies.update(cookies)
-        self._logger.debug(f'Using cookies {cookies}')
+        self.logger.debug(f'Using cookies {cookies}')
 
     def _ensure_login(self):
         if self.user_data == {}:
-            self._logger.warning(f'You must logged in!')
+            self.logger.warning(f'You must logged in!')
             sys.exit(1)
 
     def _update_status(self):
@@ -104,7 +98,7 @@ class OneReport:
         if status_request.status_code == 200:
             self._allowed_status = status_request.json()
         else:
-            self._logger.warning(f"Can't login, got status code {status_request.status_code}")
+            self.logger.warning(f"Can't login, got status code {status_request.status_code}")
 
     def login(self):
         """
@@ -113,10 +107,11 @@ class OneReport:
         ensure_login_request = self._session.get(self.ONE_REPORT_URL + self.ENSURE_LOGIN_URI)
         if ensure_login_request.status_code == 200:
             self.user_data = ensure_login_request.json()
-            self._logger.info(f"Logged in as {self.user_data['firstName']} {self.user_data['lastName']}")
+            self.logger.info(f"Logged in as {self.user_data['firstName']} {self.user_data['lastName']}")
             self._update_status()
         else:
-            self._logger.warning(f"Can't login, got status code {ensure_login_request.status_code}")
+            self.logger.warning(f"Can't login, got status code {ensure_login_request.status_code}")
+        self._ensure_login()
 
     def print_history(self):
         """
@@ -139,19 +134,20 @@ class OneReport:
                   f"on {self.user_data['firstName']} {self.user_data['lastName']}")
 
     def auto_report_from_file(self, report_file_path):
+        self.login()
         self._ensure_login()
         if self.user_data['cantReport']:
-            self._logger.warning(f"Can't report right now")
+            self.logger.warning(f"Can't report right now")
         else:
             if not os.path.exists(report_file_path):
-                self._logger.error(f'File {report_file_path} does not exists!')
+                self.logger.error(f'File {report_file_path} does not exists!')
                 sys.exit(1)
             with open(report_file_path, 'rb') as dates_report:
                 reports = yaml.safe_load(dates_report)
             now = datetime.datetime.now()
             current_day = float(f'{now.day}.{now.month}')
             if current_day not in reports:
-                self._logger.warning(f"Can't find a report for {current_day}")
+                self.logger.warning(f"Can't find a report for {current_day}")
             else:
                 report_self = reports[current_day]['report_self']
                 main_code = report_self['main_code']
@@ -177,6 +173,8 @@ def parse_args():
     parser.add_argument('-c', '--cookies', action='store', help='Override cookies scan and provied yaml format cookies file')
     parser.add_argument('-a', '--auto', action='store', help='Auto fill report from file')
     parser.add_argument('-l', '--report_list', action='store_true', help='Show report options list')
+    parser.add_argument('-d', '--daemonize', action='store_true', help='Run the program as daemon')
+    parser.add_argument('-r', '--run_hour', type=int, default=8, help="Run the cron at the specific hour (24 hours format)")
     return parser.parse_args()
 
 
@@ -184,16 +182,24 @@ def main():
     args = parse_args()
     StreamHandler(sys.stdout).push_application()
     one_report = OneReport(args.cookies)
-    one_report.login()
-    if one_report.user_data == {}:
-        sys.exit(1)
 
     if args.history:
+        one_report.login()
         one_report.print_history()
     elif args.report_list:
+        one_report.login()
         one_report.print_report_list()
+    elif args.daemonize and not args.auto:
+        one_report.logger.error('"--daemonize" must run with "--auto"')
     elif args.auto:
-        one_report.auto_report_from_file(args.auto)
+        if args.daemonize:
+            run_time = f'{str(args.run_hour).zfill(2)}:{str(random.randrange(0, 59)).zfill(2)}'
+            schedule.every().day.at(run_time).do(one_report.auto_report_from_file, args.auto)
+            while True:
+                schedule.run_pending()
+                time.sleep(60)
+        else:
+            one_report.auto_report_from_file(args.auto)
     else:
         print(f'Nothing to do')
 
