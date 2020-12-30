@@ -126,6 +126,8 @@ class OneReport:
         self._ensure_login()
         if self.user_data['cantReport']:
             print(f"Can't report right now")
+        elif self.user_data['reported']:
+            print('Already reported')
         else:
             payload = {'MainCode': (None, str(main_code).zfill(2)), 'SecondaryCode': (None, str(secondary_code).zfill(2)),
                        'Note': (None, str(note))}
