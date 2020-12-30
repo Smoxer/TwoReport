@@ -127,11 +127,15 @@ class OneReport:
         if self.user_data['cantReport']:
             print(f"Can't report right now")
         else:
-            payload = {'MainCode': (None, str(main_code)), 'SecondaryCode': (None, str(secondary_code)), 'Note': (None, str(note))}
-            report_request = self._session.post(self.ONE_REPORT_URL + self.REPORT_TODAY_URI, files=payload).json() 
-            self._update_status()
-            print(f"Reported {self.user_data['mainTextReported']} - {self.user_data['secondaryTextReported']} "
-                  f"on {self.user_data['firstName']} {self.user_data['lastName']}")
+            payload = {'MainCode': (None, str(main_code).zfill(2)), 'SecondaryCode': (None, str(secondary_code).zfill(2)),
+                       'Note': (None, str(note))}
+            report_request = self._session.post(self.ONE_REPORT_URL + self.REPORT_TODAY_URI, files=payload).json()
+            if report_request:
+                self._update_status()
+                print(f"Reported {self.user_data['mainTextReported']} - {self.user_data['secondaryTextReported']} "
+                      f"on {self.user_data['firstName']} {self.user_data['lastName']}")
+            else:
+                self.logger.error("Can't report")
 
     def auto_report_from_file(self, report_file_path):
         self.login()
@@ -155,8 +159,8 @@ class OneReport:
                 note = ''
                 if 'note' in report_self:
                     note = report_self['note']
-                self.report_today(main_code, secondary_code, note)
                 print(f"Reporting {reports[current_day]} on today ({current_day})")
+                self.report_today(main_code, secondary_code, note)
 
     def print_report_list(self):
         for primary in self._allowed_status['primaries']:
