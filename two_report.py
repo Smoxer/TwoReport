@@ -26,6 +26,7 @@ class OneReport:
     ALLOWED_STATUS_URI = 'api/Attendance/GetAllFilterStatuses'
     REPORT_TODAY_URI = 'api/Attendance/InsertPersonalReport'
     HISTORY_URI = 'api/Attendance/memberHistory'
+    DEFAULT_KEY = 'default'
     HEADERS = {'User-Agent': FIREFOX_UA, 'Accept': 'application/json, text/plain, */*', 'Host': urlparse(ONE_REPORT_URL).netloc}
 
     def __init__(self, cookies_file=None):
@@ -129,8 +130,8 @@ class OneReport:
         elif self.user_data['reported']:
             print('Already reported')
         else:
-            payload = {'MainCode': (None, str(main_code).zfill(2)), 'SecondaryCode': (None, str(secondary_code).zfill(2)),
-                       'Note': (None, str(note))}
+            payload = {'MainCode': (None, str(main_code).zfill(2)),
+                       'SecondaryCode': (None, str(secondary_code).zfill(2)), 'Note': (None, str(note))}
             report_request = self._session.post(self.ONE_REPORT_URL + self.REPORT_TODAY_URI, files=payload).json()
             if report_request:
                 self._update_status()
@@ -138,6 +139,32 @@ class OneReport:
                       f"on {self.user_data['firstName']} {self.user_data['lastName']}")
             else:
                 self.logger.error("Can't report")
+
+    def _report_by_priority(self, reports):
+        reports = {key.lower(): value for key, value in reports.items()}
+        now = datetime.datetime.now()
+        specific_day = float(f'{now.day}.{now.month}')
+        day_name = now.strftime("%A").lower()
+        date_option = None
+
+        if specific_day in reports:
+            date_option = specific_day
+        elif day_name in reports:
+            date_option = day_name
+        elif self.DEFAULT_KEY in reports:
+            date_option = self.DEFAULT_KEY
+        else:
+            self.logger.error('No option specified for today')
+
+        if date_option:
+            report_self = reports[date_option]['report_self']
+            note = ''
+            main_code = report_self['main_code']
+            secondary_code = report_self['secondary_code']
+            if 'note' in report_self:
+                note = report_self['note']
+            print(f"Reporting {reports[date_option]} on today (option: {date_option})")
+            self.report_today(main_code, secondary_code, note)
 
     def auto_report_from_file(self, report_file_path):
         self.login()
@@ -150,19 +177,7 @@ class OneReport:
                 sys.exit(1)
             with open(report_file_path, 'rb') as dates_report:
                 reports = yaml.safe_load(dates_report)
-            now = datetime.datetime.now()
-            current_day = float(f'{now.day}.{now.month}')
-            if current_day not in reports:
-                self.logger.warning(f"Can't find a report for {current_day}")
-            else:
-                report_self = reports[current_day]['report_self']
-                main_code = report_self['main_code']
-                secondary_code = report_self['secondary_code']
-                note = ''
-                if 'note' in report_self:
-                    note = report_self['note']
-                print(f"Reporting {reports[current_day]} on today ({current_day})")
-                self.report_today(main_code, secondary_code, note)
+            self._report_by_priority(reports)
 
     def print_report_list(self):
         for primary in self._allowed_status['primaries']:
