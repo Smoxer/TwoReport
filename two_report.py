@@ -1,10 +1,11 @@
 #!/bin/python3
 
 from urllib.parse import urlparse
-from logbook import Logger, StreamHandler
+from logbook import Logger, RotatingFileHandler, StreamHandler
 import argparse
 import requests
 import sqlite3
+import pathlib
 import datetime
 import schedule
 import random
@@ -28,8 +29,11 @@ class OneReport:
     HISTORY_URI = 'api/Attendance/memberHistory'
     DEFAULT_KEY = 'default'
     HEADERS = {'User-Agent': FIREFOX_UA, 'Accept': 'application/json, text/plain, */*', 'Host': urlparse(ONE_REPORT_URL).netloc}
+	RUNNING_DIR = pathlib.Path(__file__).parent.absolute()
 
     def __init__(self, cookies_file=None):
+        StreamHandler(sys.stdout, bubble=True).push_application()
+        RotatingFileHandler(os.path.join(self.RUNNING_DIR, 'OneReport.txt'), max_size=1024 * 5, backup_count=1, bubble=True).push_application()
         self.user_data = {}
         self.logger = Logger('TwoReport')
         self._allowed_status = {}
@@ -141,9 +145,9 @@ class OneReport:
                 self.logger.error("Can't report")
 
     def _report_by_priority(self, reports):
-        reports = {key.lower(): value for key, value in reports.items()}
+        reports = {str(key).lower(): value for key, value in reports.items()}
         now = datetime.datetime.now()
-        specific_day = float(f'{now.day}.{now.month}')
+        specific_day = f'{now.day}.{now.month}'
         day_name = now.strftime("%A").lower()
         date_option = None
 
@@ -201,7 +205,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-    StreamHandler(sys.stdout).push_application()
     one_report = OneReport(args.cookies)
 
     if args.history:
