@@ -29,7 +29,7 @@ class OneReport:
     HISTORY_URI = 'api/Attendance/memberHistory'
     DEFAULT_KEY = 'default'
     HEADERS = {'User-Agent': FIREFOX_UA, 'Accept': 'application/json, text/plain, */*', 'Host': urlparse(ONE_REPORT_URL).netloc}
-	RUNNING_DIR = pathlib.Path(__file__).parent.absolute()
+    RUNNING_DIR = pathlib.Path(__file__).parent.absolute()
 
     def __init__(self, cookies_file=None):
         StreamHandler(sys.stdout, bubble=True).push_application()
