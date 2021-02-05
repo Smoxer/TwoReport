@@ -14,26 +14,29 @@ import yaml
 import sys
 import os
 
-FIREFOX_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:83.0) Gecko/20100101 Firefox/83.0'
-SQLITE_COOKIES_LOCATIONS = ['/data/data/il.idf.doch1/app_webview/Default/Cookies', # Android - root required
-                            r'%localappdata%\Google\Chrome\User Data\Default\Cookies', # Windows
-                            '~/Library/Application Support/Google/Chrome/Default/Cookies' # macOS
+FIREFOX_UA = 'Mozilla/5.0 (Android 11; Mobile; rv:83.0) Gecko/83.0 Firefox/83.0'
+SQLITE_COOKIES_LOCATIONS = ['/data/data/il.idf.doch1/app_webview/Default/Cookies',  # Android - root required
+                            r'%localappdata%\Google\Chrome\User Data\Default\Cookies',  # Windows
+                            '~/Library/Application Support/Google/Chrome/Default/Cookies'  # macOS
                             ]
 
 
 class OneReport:
     ONE_REPORT_URL = 'https://one.prat.idf.il/'
-    ENSURE_LOGIN_URI = 'api/Attendance/GetReportedData'
-    ALLOWED_STATUS_URI = 'api/Attendance/GetAllFilterStatuses'
-    REPORT_TODAY_URI = 'api/Attendance/InsertPersonalReport'
-    HISTORY_URI = 'api/Attendance/memberHistory'
-    DEFAULT_KEY = 'default'
-    HEADERS = {'User-Agent': FIREFOX_UA, 'Accept': 'application/json, text/plain, */*', 'Host': urlparse(ONE_REPORT_URL).netloc}
+    CLEARANCE_URL = 'https://clearance.medical.idf.il/'
+    ONE_REPORT_ENSURE_LOGIN_URI = 'api/Attendance/GetReportedData'
+    ONE_REPORT_ALLOWED_STATUS_URI = 'api/Attendance/GetAllFilterStatuses'
+    ONE_REPORT_REPORT_TODAY_URI = 'api/Attendance/InsertPersonalReport'
+    ONE_REPORT_HISTORY_URI = 'api/Attendance/memberHistory'
+    ONE_REPORT_DEFAULT_KEY = 'default'
+    CLEARANCE_REPORT_URI = 'api/report/addReport'
+    HEADERS = {'User-Agent': FIREFOX_UA, 'Accept': 'application/json, text/plain, */*'}
     RUNNING_DIR = pathlib.Path(__file__).parent.absolute()
 
     def __init__(self, cookies_file=None):
         StreamHandler(sys.stdout, bubble=True).push_application()
-        RotatingFileHandler(os.path.join(self.RUNNING_DIR, 'OneReport.txt'), max_size=1024 * 5, backup_count=1, bubble=True).push_application()
+        RotatingFileHandler(os.path.join(self.RUNNING_DIR, 'OneReport.txt'), max_size=1024 * 1024, backup_count=1,
+                            bubble=True).push_application()
         self.user_data = {}
         self.logger = Logger('TwoReport')
         self._allowed_status = {}
@@ -99,7 +102,7 @@ class OneReport:
             sys.exit(1)
 
     def _update_status(self):
-        status_request = self._session.get(self.ONE_REPORT_URL + self.ALLOWED_STATUS_URI)
+        status_request = self._session.get(self.ONE_REPORT_URL + self.ONE_REPORT_ALLOWED_STATUS_URI)
         if status_request.status_code == 200:
             self._allowed_status = status_request.json()
         else:
@@ -109,7 +112,7 @@ class OneReport:
         """
         Ensure we are logged in and get our name as a test
         """
-        ensure_login_request = self._session.get(self.ONE_REPORT_URL + self.ENSURE_LOGIN_URI)
+        ensure_login_request = self._session.get(self.ONE_REPORT_URL + self.ONE_REPORT_ENSURE_LOGIN_URI)
         if ensure_login_request.status_code == 200:
             self.user_data = ensure_login_request.json()
             self.logger.info(f"Logged in as {self.user_data['firstName']} {self.user_data['lastName']}")
@@ -123,7 +126,8 @@ class OneReport:
         See reports history
         """
         now = datetime.datetime.now()
-        history = self._session.post(self.ONE_REPORT_URL + self.HISTORY_URI, json={'month': now.month, 'year': now.year}).json() 
+        payload = {'month': now.month, 'year': now.year}
+        history = self._session.post(self.ONE_REPORT_URL + self.ONE_REPORT_HISTORY_URI, json=payload).json()
         for day in history['days']:
             print(f"{day['date']}\t\t{day['mainStatusDeterminedName']} - {day['secondaryStatusDeterminedName']}")
 
@@ -136,7 +140,8 @@ class OneReport:
         else:
             payload = {'MainCode': (None, str(main_code).zfill(2)),
                        'SecondaryCode': (None, str(secondary_code).zfill(2)), 'Note': (None, str(note))}
-            report_request = self._session.post(self.ONE_REPORT_URL + self.REPORT_TODAY_URI, files=payload).json()
+            report_request = self._session.post(self.ONE_REPORT_URL + self.ONE_REPORT_REPORT_TODAY_URI,
+                                                files=payload).json()
             if report_request:
                 self._update_status()
                 print(f"Reported {self.user_data['mainTextReported']} - {self.user_data['secondaryTextReported']} "
@@ -155,8 +160,8 @@ class OneReport:
             date_option = specific_day
         elif day_name in reports:
             date_option = day_name
-        elif self.DEFAULT_KEY in reports:
-            date_option = self.DEFAULT_KEY
+        elif self.ONE_REPORT_DEFAULT_KEY in reports:
+            date_option = self.ONE_REPORT_DEFAULT_KEY
         else:
             self.logger.error('No option specified for today')
 
@@ -170,18 +175,21 @@ class OneReport:
             print(f"Reporting {reports[date_option]} on today (option: {date_option})")
             self.report_today(main_code, secondary_code, note)
 
+    def _read_yml_file(self, path):
+        if not os.path.exists(path):
+            self.logger.error(f'File {path} does not exists!')
+            sys.exit(1)
+        with open(path, 'rb') as yml_data:
+            result = yaml.safe_load(yml_data)
+        return result
+
     def auto_report_from_file(self, report_file_path):
         self.login()
         self._ensure_login()
         if self.user_data['cantReport']:
             self.logger.warning(f"Can't report right now")
         else:
-            if not os.path.exists(report_file_path):
-                self.logger.error(f'File {report_file_path} does not exists!')
-                sys.exit(1)
-            with open(report_file_path, 'rb') as dates_report:
-                reports = yaml.safe_load(dates_report)
-            self._report_by_priority(reports)
+            self._report_by_priority(self._read_yml_file(report_file_path))
 
     def print_report_list(self):
         for primary in self._allowed_status['primaries']:
@@ -189,17 +197,37 @@ class OneReport:
             for secondary in primary['secondaries']:
                 print(f"\t{secondary['statusCode']} - {secondary['statusDescription']}")
 
+    def report_clearance(self, headers_path):
+        headers = self._read_yml_file(headers_path)
+        payload = {'isSymptom': False, 'isProximity': False, 'potentialAnswers':
+            {'isFever': False, 'isAllergy': False, 'isFluVaccine': False}
+        }
+        report_request = self._session.post(self.CLEARANCE_URL + self.CLEARANCE_REPORT_URI,
+                                            json=payload, headers=headers)
+        if report_request.status_code == 200:
+            print(f"Clearance reported on {report_request.json()['reportUpdatedDate']}")
+        else:
+            self.logger.error("Can't report")
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Automatic doch1. In order for this script to work, you need to '
                                                  'login via chrome/doch1 app (only works for rooted android phones) '
                                                  'and choose the "Remember me" option')
-    parser.add_argument('--history', action='store_true', help='Show report history')
-    parser.add_argument('-c', '--cookies', action='store', help='Override cookies scan and provied yaml format cookies file')
-    parser.add_argument('-a', '--auto', action='store', help='Auto fill report from file')
-    parser.add_argument('-l', '--report_list', action='store_true', help='Show report options list')
-    parser.add_argument('-d', '--daemonize', action='store_true', help='Run the program as daemon')
-    parser.add_argument('-r', '--run_hour', type=int, default=8, help="Run the cron at the specific hour (24 hours format)")
+    parser.add_argument('--history', action='store_true',
+                        help='Show report history')
+    parser.add_argument('-c', '--cookies', action='store',
+                        help='Override cookies scan and provied yaml format cookies file')
+    parser.add_argument('-a', '--auto', action='store',
+                        help='Auto fill report from file')
+    parser.add_argument('-l', '--report_list', action='store_true',
+                        help='Show report options list')
+    parser.add_argument('-d', '--daemonize', action='store_true',
+                        help='Run the program as daemon')
+    parser.add_argument('-e', '--clearance', action='store',
+                        help='Path for headers yml (in order to run auth for clearance)')
+    parser.add_argument('-r', '--run_hour', type=int, default=8,
+                        help="Run the cron at the specific hour (24 hours format)")
     return parser.parse_args()
 
 
@@ -219,11 +247,15 @@ def main():
         if args.daemonize:
             run_time = f'{str(args.run_hour).zfill(2)}:{str(random.randrange(0, 59)).zfill(2)}'
             schedule.every().day.at(run_time).do(one_report.auto_report_from_file, args.auto)
+            if args.clearance:
+                schedule.every().day.at(run_time).do(one_report.report_clearance, args.clearance)
             while True:
                 schedule.run_pending()
                 time.sleep(60)
         else:
             one_report.auto_report_from_file(args.auto)
+            if args.clearance:
+                one_report.report_clearance(args.clearance)
     else:
         print(f'Nothing to do')
 
