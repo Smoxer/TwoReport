@@ -224,7 +224,7 @@ def parse_args():
                         help='Show report options list')
     parser.add_argument('-d', '--daemonize', action='store_true',
                         help='Run the program as daemon')
-    parser.add_argument('-e', '--clearance', type=str, default=None,
+    parser.add_argument('-e', '--clearance', action='store',
                         help='Path for headers yml (in order to run auth for clearance)')
     parser.add_argument('-r', '--run_hour', type=int, default=8,
                         help="Run the cron at the specific hour (24 hours format)")
